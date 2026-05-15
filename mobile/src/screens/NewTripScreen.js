@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
+import { ArrowLeft } from 'lucide-react-native';
 import {
   ActivityIndicator,
   FlatList,
@@ -53,7 +54,7 @@ export default function NewTripScreen() {
         navigation.navigate('Dashboard');
       }, 800);
     } catch (error) {
-      const message = error.response?.data?.message || 'Nao foi possivel criar a viagem.';
+      const message = error.response?.data?.message || 'Não foi possível criar a viagem.';
       setErrorMessage(message);
     } finally {
       setIsLoading(false);
@@ -69,7 +70,7 @@ export default function NewTripScreen() {
             onPress={() => navigation.navigate('Dashboard')}
             activeOpacity={0.8}
           >
-            <Text style={styles.backButtonText}>←</Text>
+            <ArrowLeft size={24} color="#FFFFFF" />
           </TouchableOpacity>
 
           <View style={styles.headerTextArea}>
@@ -205,18 +206,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: 'center',
-    borderColor: '#bbf7d0',
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 40,
+    height: 36,
     justifyContent: 'center',
     marginRight: 12,
-    width: 40,
-  },
-  backButtonText: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '700',
+    width: 36,
   },
   headerTextArea: {
     flex: 1,

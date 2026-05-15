@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ChevronDown, Filter } from 'lucide-react-native';
+import { ArrowLeft, Filter } from 'lucide-react-native';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import api from '../services/api';
@@ -11,6 +11,12 @@ const STATUS_OPTIONS = [
   { label: 'Concluídas', value: 'COMPLETED' },
 ];
 
+const PERIOD_OPTIONS = [
+  { label: 'Hoje', value: 'TODAY' },
+  { label: 'Esta semana', value: 'WEEK' },
+  { label: 'Este mês', value: 'MONTH' },
+];
+
 const MATERIAL_LABELS = {
   ENTULHO: 'Entulho',
   CONCRETO: 'Concreto',
@@ -20,12 +26,13 @@ const MATERIAL_LABELS = {
   MISTO: 'Misto',
 };
 
-export default function TripHistoryScreen({ navigation }) {
+export default function AdminTripsScreen({ navigation }) {
   const [trips, setTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [periodFilter, setPeriodFilter] = useState('MONTH');
   const [isStatusDropdownVisible, setIsStatusDropdownVisible] = useState(false);
 
   useEffect(() => {
@@ -47,40 +54,102 @@ export default function TripHistoryScreen({ navigation }) {
     loadTrips();
   }, []);
 
+  function getTripDateValue(trip) {
+    if (trip.status === 'COMPLETED') {
+      return trip.completedAt || trip.startedAt;
+    }
+
+    return trip.startedAt || trip.completedAt;
+  }
+
+  function getTripDate(trip) {
+    const value = getTripDateValue(trip);
+
+    if (!value) {
+      return null;
+    }
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function isSameDay(date, reference) {
+    return date.getFullYear() === reference.getFullYear()
+      && date.getMonth() === reference.getMonth()
+      && date.getDate() === reference.getDate();
+  }
+
+  function isThisWeek(date, reference) {
+    const startOfWeek = new Date(reference);
+    startOfWeek.setHours(0, 0, 0, 0);
+    startOfWeek.setDate(reference.getDate() - reference.getDay());
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+    return date >= startOfWeek && date < endOfWeek;
+  }
+
+  function isThisMonth(date, reference) {
+    return date.getFullYear() === reference.getFullYear()
+      && date.getMonth() === reference.getMonth();
+  }
+
+  function matchesPeriod(trip) {
+    const date = getTripDate(trip);
+
+    if (!date) {
+      return false;
+    }
+
+    const today = new Date();
+
+    if (periodFilter === 'TODAY') {
+      return isSameDay(date, today);
+    }
+
+    if (periodFilter === 'WEEK') {
+      return isThisWeek(date, today);
+    }
+
+    return isThisMonth(date, today);
+  }
+
   const filteredTrips = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
     return trips.filter((trip) => {
-      const matchesStatus = selectedStatus === 'ALL' || trip.status === selectedStatus;
-      const searchableText = [
-        trip.id !== null && trip.id !== undefined ? trip.id.toString() : '',
+      const matchesStatus = statusFilter === 'ALL' || trip.status === statusFilter;
+      const matchesDate = matchesPeriod(trip);
+
+      const searchFields = [
+        String(trip.id || ''),
+        trip.driverName || '',
         trip.origin || '',
         trip.destination || '',
       ].join(' ').toLowerCase();
 
-      const matchesSearch = !normalizedSearch || searchableText.includes(normalizedSearch);
+      const matchesSearch = !normalizedSearch || searchFields.includes(normalizedSearch);
 
-      return matchesStatus && matchesSearch;
+      return matchesStatus && matchesDate && matchesSearch;
     });
-  }, [trips, searchTerm, selectedStatus]);
+  }, [trips, searchTerm, statusFilter, periodFilter]);
 
   const stats = useMemo(() => {
-    const completedTrips = trips.filter((trip) => trip.status === 'COMPLETED');
-    const totalWeight = trips.reduce((total, trip) => {
-      const weight = Number(trip.estimatedWeight);
-      return Number.isNaN(weight) ? total : total + weight;
-    }, 0);
+    const totalWeight = filteredTrips
+      .filter((trip) => trip.status === 'COMPLETED')
+      .reduce((total, trip) => {
+        const weight = Number(trip.estimatedWeight);
+        return Number.isNaN(weight) ? total : total + weight;
+      }, 0);
 
     return {
-      total: trips.length,
-      completed: completedTrips.length,
+      total: filteredTrips.length,
+      completed: filteredTrips.filter((trip) => trip.status === 'COMPLETED').length,
+      inProgress: filteredTrips.filter((trip) => trip.status === 'IN_PROGRESS').length,
       tons: Number(totalWeight.toFixed(2)),
     };
-  }, [trips]);
-
-  function getSelectedStatusLabel() {
-    return STATUS_OPTIONS.find((option) => option.value === selectedStatus)?.label || 'Todas as viagens';
-  }
+  }, [filteredTrips]);
 
   function formatStatus(status) {
     if (status === 'COMPLETED') {
@@ -96,6 +165,10 @@ export default function TripHistoryScreen({ navigation }) {
     }
 
     return status || 'Sem status';
+  }
+
+  function getSelectedStatusLabel() {
+    return STATUS_OPTIONS.find((option) => option.value === statusFilter)?.label || 'Todas as viagens';
   }
 
   function getStatusStyle(status) {
@@ -122,24 +195,10 @@ export default function TripHistoryScreen({ navigation }) {
     };
   }
 
-  function getTripDateValue(trip) {
-    if (trip.status === 'COMPLETED') {
-      return trip.completedAt || trip.startedAt;
-    }
-
-    return trip.startedAt || trip.completedAt;
-  }
-
   function formatDateTime(trip) {
-    const value = getTripDateValue(trip);
+    const date = getTripDate(trip);
 
-    if (!value) {
-      return 'Sem data';
-    }
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
+    if (!date) {
       return 'Sem data';
     }
 
@@ -171,15 +230,15 @@ export default function TripHistoryScreen({ navigation }) {
           <View style={styles.headerRow}>
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => navigation.navigate('Dashboard')}
+              onPress={() => navigation.navigate('AdminDashboard')}
               activeOpacity={0.8}
             >
               <ArrowLeft size={24} color="#FFFFFF" />
             </TouchableOpacity>
 
             <View style={styles.headerTextArea}>
-              <Text style={styles.title}>Histórico de Viagens</Text>
-              <Text style={styles.subtitle}>Suas viagens realizadas</Text>
+              <Text style={styles.title}>Gestão de Viagens</Text>
+              <Text style={styles.subtitle}>Monitoramento completo</Text>
             </View>
           </View>
 
@@ -195,6 +254,11 @@ export default function TripHistoryScreen({ navigation }) {
             </View>
 
             <View style={styles.statCard}>
+              <Text style={styles.statNumber}>{stats.inProgress}</Text>
+              <Text style={styles.statCaption}>Andamento</Text>
+            </View>
+
+            <View style={styles.statCard}>
               <Text style={styles.statNumber}>{stats.tons}</Text>
               <Text style={styles.statCaption}>Toneladas</Text>
             </View>
@@ -206,7 +270,7 @@ export default function TripHistoryScreen({ navigation }) {
             style={styles.searchInput}
             value={searchTerm}
             onChangeText={setSearchTerm}
-            placeholder="Buscar por ID ou local..."
+            placeholder="Buscar por ID, motorista ou local..."
             placeholderTextColor="#64748b"
           />
 
@@ -222,22 +286,20 @@ export default function TripHistoryScreen({ navigation }) {
                 activeOpacity={0.8}
               >
                 <Text style={styles.statusSelectorValue}>{getSelectedStatusLabel()}</Text>
-                <View style={styles.statusSelectorArrow}>
-                  <ChevronDown size={18} color="#FFFFFF" />
-                </View>
+                <Text style={styles.statusSelectorArrow}>v</Text>
               </TouchableOpacity>
 
               {isStatusDropdownVisible ? (
                 <View style={styles.statusDropdown}>
                   {STATUS_OPTIONS.map((option) => {
-                    const isSelected = selectedStatus === option.value;
+                    const isSelected = statusFilter === option.value;
 
                     return (
                       <TouchableOpacity
                         key={option.value}
                         style={[styles.dropdownOption, isSelected && styles.dropdownOptionSelected]}
                         onPress={() => {
-                          setSelectedStatus(option.value);
+                          setStatusFilter(option.value);
                           setIsStatusDropdownVisible(false);
                         }}
                         activeOpacity={0.8}
@@ -249,6 +311,28 @@ export default function TripHistoryScreen({ navigation }) {
                   })}
                 </View>
               ) : null}
+            </View>
+          </View>
+
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterTitle}>Período</Text>
+            <View style={styles.filterOptions}>
+              {PERIOD_OPTIONS.map((option) => {
+                const isSelected = periodFilter === option.value;
+
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[styles.filterButton, isSelected && styles.filterButtonSelected]}
+                    onPress={() => setPeriodFilter(option.value)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.filterButtonText, isSelected && styles.filterButtonTextSelected]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         </View>
@@ -279,26 +363,31 @@ export default function TripHistoryScreen({ navigation }) {
           </View>
         </View>
 
+        <View style={styles.driverRow}>
+          <Text style={styles.driverLabel}>Motorista</Text>
+          <Text style={styles.driverName}>{item.driverName || 'Sem motorista'}</Text>
+        </View>
+
         <View style={styles.routeArea}>
           <View style={styles.routeRow}>
             <View style={[styles.routeDot, styles.originDot]} />
-            <View style={styles.routeTextArea}>
-              <Text style={styles.routeLabel}>Origem</Text>
-              <Text style={styles.routeText}>{item.origin || 'Sem origem'}</Text>
-            </View>
+            <Text style={styles.routeText}>{item.origin || 'Sem origem'}</Text>
           </View>
 
           <View style={styles.routeRow}>
             <View style={[styles.routeDot, styles.destinationDot]} />
-            <View style={styles.routeTextArea}>
-              <Text style={styles.routeLabel}>Destino</Text>
-              <Text style={styles.routeText}>{item.destination || 'Sem destino'}</Text>
-            </View>
+            <Text style={styles.routeText}>{item.destination || 'Sem destino'}</Text>
           </View>
         </View>
 
         <View style={styles.cardFooter}>
           <Text style={styles.materialText}>{formatMaterial(item.materialType)}</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('TripDetailsScreen', { trip: item })}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.detailsLink}>Ver detalhes →</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -337,7 +426,6 @@ export default function TripHistoryScreen({ navigation }) {
         ListEmptyComponent={
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>Nenhuma viagem encontrada</Text>
-            <Text style={styles.emptyText}>As viagens filtradas aparecerão aqui.</Text>
           </View>
         }
       />
@@ -351,7 +439,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    backgroundColor: '#16a34a',
+    backgroundColor: '#1f2937',
     paddingBottom: 20,
     paddingHorizontal: 24,
     paddingTop: 56,
@@ -378,30 +466,30 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
-    color: '#f0fdf4',
+    color: '#d1d5db',
     fontSize: 14,
   },
   statsGrid: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   statCard: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 8,
     flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 10,
   },
   statNumber: {
     color: '#ffffff',
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '700',
-    marginBottom: 3,
+    marginBottom: 2,
   },
   statCaption: {
-    color: '#f0fdf4',
-    fontSize: 12,
+    color: '#d1d5db',
+    fontSize: 11,
     textAlign: 'center',
   },
   filtersArea: {
@@ -417,6 +505,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     height: 46,
     paddingHorizontal: 14,
+  },
+  filterGroup: {
+    marginTop: 14,
+  },
+  filterTitle: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   statusFilterRow: {
     alignItems: 'flex-start',
@@ -452,12 +549,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   statusSelectorArrow: {
-    alignItems: 'center',
-    backgroundColor: '#16a34a',
-    borderRadius: 12,
-    height: 24,
-    justifyContent: 'center',
-    width: 24,
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '700',
   },
   statusDropdown: {
     backgroundColor: '#ffffff',
@@ -489,6 +583,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  filterOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterButton: {
+    backgroundColor: '#ffffff',
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  filterButtonSelected: {
+    backgroundColor: '#16a34a',
+    borderColor: '#16a34a',
+  },
+  filterButtonText: {
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  filterButtonTextSelected: {
+    color: '#ffffff',
+  },
   list: {
     paddingBottom: 32,
   },
@@ -505,7 +624,7 @@ const styles = StyleSheet.create({
   tripHeader: {
     alignItems: 'flex-start',
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   statusIcon: {
     alignItems: 'center',
@@ -578,9 +697,22 @@ const styles = StyleSheet.create({
   pendingIcon: {
     backgroundColor: '#ffedd5',
   },
+  driverRow: {
+    marginBottom: 14,
+  },
+  driverLabel: {
+    color: '#64748b',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  driverName: {
+    color: '#334155',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   routeArea: {
-    gap: 12,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 14,
   },
   routeRow: {
     alignItems: 'flex-start',
@@ -590,40 +722,42 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     height: 12,
     marginRight: 10,
-    marginTop: 4,
+    marginTop: 3,
     width: 12,
   },
   originDot: {
-    backgroundColor: '#16a34a',
+    backgroundColor: '#22c55e',
   },
   destinationDot: {
-    backgroundColor: '#dc2626',
-  },
-  routeTextArea: {
-    flex: 1,
-  },
-  routeLabel: {
-    color: '#64748b',
-    fontSize: 12,
-    marginBottom: 4,
+    backgroundColor: '#ef4444',
   },
   routeText: {
     color: '#0f172a',
+    flex: 1,
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 19,
   },
   cardFooter: {
+    alignItems: 'center',
     borderTopColor: '#f1f5f9',
     borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     paddingTop: 12,
   },
   materialText: {
     color: '#334155',
+    flex: 1,
     fontSize: 14,
+    paddingRight: 12,
+  },
+  detailsLink: {
+    color: '#16a34a',
+    fontSize: 14,
+    fontWeight: '700',
   },
   center: {
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
     flex: 1,
     justifyContent: 'center',
     padding: 24,
@@ -639,15 +773,9 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
   },
   emptyTitle: {
-    color: '#374151',
-    fontSize: 16,
+    color: '#475569',
+    fontSize: 15,
     fontWeight: '700',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  emptyText: {
-    color: '#6b7280',
-    fontSize: 14,
     textAlign: 'center',
   },
 });

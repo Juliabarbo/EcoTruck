@@ -10,9 +10,15 @@ import com.ecotruck.model.enums.Role;
 import com.ecotruck.model.enums.TripStatus;
 import com.ecotruck.repository.TripRepository;
 import com.ecotruck.repository.UserRepository;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class TripService {
@@ -75,6 +81,39 @@ public class TripService {
         return toResponse(tripRepository.save(trip));
     }
 
+    public TripResponse confirmDisposalWithPhoto(
+            Long tripId,
+            String qrCodeValidation,
+            MultipartFile photo,
+            String simulatedPhotoName,
+            User driver
+    ) {
+        Trip trip = tripRepository.findById(tripId)
+                .filter(foundTrip -> foundTrip.getDriver().getId().equals(driver.getId()))
+                .orElseThrow(() -> new RuntimeException("Viagem nao encontrada"));
+
+        if (trip.getStatus() != TripStatus.IN_PROGRESS && trip.getStatus() != TripStatus.PENDING) {
+            throw new RuntimeException("A viagem precisa estar pendente ou em andamento para confirmar o descarte");
+        }
+
+        if (qrCodeValidation == null || qrCodeValidation.isBlank()) {
+            throw new RuntimeException("QR Code e obrigatorio");
+        }
+
+        String photoUrl = saveDisposalPhoto(photo, simulatedPhotoName);
+
+        trip.setPhotoUrl(photoUrl);
+        trip.setQrCodeValidation(qrCodeValidation);
+        trip.setStatus(TripStatus.COMPLETED);
+        trip.setCompletedAt(LocalDateTime.now());
+
+        if (trip.getStartedAt() == null) {
+            trip.setStartedAt(LocalDateTime.now());
+        }
+
+        return toResponse(tripRepository.save(trip));
+    }
+
     public List<TripResponse> getDriverTrips(User driver) {
         return tripRepository.findAllByDriverId(driver.getId())
                 .stream()
@@ -132,6 +171,40 @@ public class TripService {
             throw new RuntimeException(fieldName + " obrigatoria");
         }
         return value;
+    }
+
+    private String saveDisposalPhoto(MultipartFile photo, String simulatedPhotoName) {
+        if ((photo == null || photo.isEmpty()) && (simulatedPhotoName == null || simulatedPhotoName.isBlank())) {
+            throw new RuntimeException("Foto do descarte e obrigatoria");
+        }
+
+        try {
+            Path uploadDirectory = Paths.get("uploads");
+            Files.createDirectories(uploadDirectory);
+
+            if (photo == null || photo.isEmpty()) {
+                String filename = UUID.randomUUID() + "-" + simulatedPhotoName.replaceAll("[^a-zA-Z0-9._-]", "_");
+                Path destination = uploadDirectory.resolve(filename);
+                Files.writeString(destination, "Foto simulada do descarte");
+
+                return "uploads/" + filename;
+            }
+
+            String originalFilename = photo.getOriginalFilename();
+            String extension = "";
+
+            if (originalFilename != null && originalFilename.contains(".")) {
+                extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+            }
+
+            String filename = UUID.randomUUID() + extension;
+            Path destination = uploadDirectory.resolve(filename);
+            photo.transferTo(destination.toFile());
+
+            return "uploads/" + filename;
+        } catch (IOException exception) {
+            throw new RuntimeException("Nao foi possivel salvar a foto do descarte");
+        }
     }
 
 }

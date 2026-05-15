@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { CircleCheck, Clock, LogOut, Truck } from 'lucide-react-native';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import api from '../services/api';
@@ -10,6 +11,7 @@ export default function DriverDashboardScreen({ navigation }) {
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
   const [tripsError, setTripsError] = useState('');
   const [driverName, setDriverName] = useState('Motorista');
+  const [activeTab, setActiveTab] = useState('ACTIVE');
 
   useFocusEffect(
     useCallback(() => {
@@ -24,14 +26,15 @@ export default function DriverDashboardScreen({ navigation }) {
 
         try {
           const response = await api.get('/trips');
-          setTrips(Array.isArray(response.data) ? response.data : []);
+          const loadedTrips = Array.isArray(response.data) ? response.data : [];
+          setTrips(loadedTrips);
         } catch (error) {
           if (error.response?.status === 401 || error.response?.status === 403) {
             navigation.replace('Login');
             return;
           }
 
-          setTripsError('Nao foi possivel carregar as viagens.');
+          setTripsError('Não foi possível carregar as viagens.');
         } finally {
           setIsLoadingTrips(false);
         }
@@ -52,20 +55,132 @@ export default function DriverDashboardScreen({ navigation }) {
     navigation.replace('Login');
   }
 
+  function normalizeStatus(status) {
+    return String(status || '').trim().toUpperCase();
+  }
+
   function renderTrip({ item }) {
+    const status = normalizeStatus(item.status);
+    const material = formatMaterial(item.materialType);
+    const date = formatDateTime(status === 'COMPLETED' ? item.completedAt : item.startedAt);
+    const weight = formatWeight(item.estimatedWeight);
+    const isInProgress = status === 'IN_PROGRESS';
+    const isPending = status === 'PENDING';
+
     return (
-      <View style={styles.tripCard}>
-        <Text style={styles.tripLabel}>Origem</Text>
-        <Text style={styles.tripValue}>{item.origin}</Text>
-        <Text style={styles.tripLabel}>Destino</Text>
-        <Text style={styles.tripValue}>{item.destination}</Text>
-        <Text style={styles.tripStatus}>{item.status}</Text>
+      <View style={[styles.tripCard, (isInProgress || isPending) && styles.inProgressTripCard]}>
+        <View style={styles.tripHeader}>
+          <View>
+            <Text style={styles.tripTitle}>Viagem #{item.id}</Text>
+            {date ? <Text style={styles.tripDate}>{date}</Text> : null}
+          </View>
+
+          <View style={styles.tripMeta}>
+            {weight ? <Text style={styles.tripWeight}>{weight}</Text> : null}
+            <View style={[
+              styles.tripStatusBadge,
+              isInProgress ? styles.inProgressBadge : isPending ? styles.pendingBadge : styles.completedBadge,
+            ]}>
+              <Text style={[
+                styles.tripStatusText,
+                isInProgress ? styles.inProgressText : isPending ? styles.pendingText : styles.completedText,
+              ]}>
+                {isInProgress ? 'Em andamento' : isPending ? 'Pendente' : 'Concluída'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.routeArea}>
+          <View style={styles.routeRow}>
+            <View style={[styles.routeDot, styles.originDot]} />
+            <View style={styles.routeTextArea}>
+              <Text style={styles.tripLabel}>Origem</Text>
+              <Text style={styles.tripValue}>{item.origin || 'Sem origem'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.routeRow}>
+            <View style={[styles.routeDot, styles.destinationDot]} />
+            <View style={styles.routeTextArea}>
+              <Text style={styles.tripLabel}>Destino</Text>
+              <Text style={styles.tripValue}>{item.destination || 'Sem destino'}</Text>
+            </View>
+          </View>
+        </View>
+
+        {material ? (
+          <View style={styles.tripFooter}>
+            <Text style={styles.materialText}>{material}</Text>
+          </View>
+        ) : null}
+
+        {(isInProgress || isPending) ? (
+          <TouchableOpacity
+            style={styles.confirmButton}
+            onPress={() => navigation.navigate('ConfirmDisposal', { trip: item })}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.confirmButtonText}>Confirmar Descarte</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
 
-  const completedTrips = trips.filter((trip) => trip.status === 'COMPLETED').length;
-  const inProgressTrips = trips.filter((trip) => trip.status === 'IN_PROGRESS').length;
+  function formatMaterial(materialType) {
+    const labels = {
+      ENTULHO: 'Entulho',
+      CONCRETO: 'Concreto',
+      MADEIRA: 'Madeira',
+      METAL: 'Metal',
+      PLASTICO: 'Plástico',
+      MISTO: 'Misto',
+    };
+
+    return labels[materialType] || materialType || '';
+  }
+
+  function formatWeight(weight) {
+    if (weight === null || weight === undefined) {
+      return '';
+    }
+
+    return `${weight} ton`;
+  }
+
+  function formatDateTime(value) {
+    if (!value) {
+      return '';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+
+    return `${day}/${month}/${year} às ${hours}:${minutes}`;
+  }
+
+  const completedTrips = trips.filter((trip) => normalizeStatus(trip.status) === 'COMPLETED').length;
+  const activeTrips = trips.filter((trip) => {
+    const status = normalizeStatus(trip.status);
+    return status === 'PENDING' || status === 'IN_PROGRESS';
+  });
+  const inProgressTrips = activeTrips.length;
+  const displayedTrips = activeTab === 'ACTIVE'
+    ? activeTrips
+    : trips.filter((trip) => normalizeStatus(trip.status) === 'COMPLETED');
+  const emptyMessage = activeTab === 'ACTIVE'
+    ? 'Nenhuma viagem em andamento'
+    : 'Nenhuma viagem concluída';
 
   return (
     <View style={styles.container}>
@@ -83,14 +198,14 @@ export default function DriverDashboardScreen({ navigation }) {
           </View>
 
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
-            <Text style={styles.logoutText}>Sair</Text>
+            <LogOut size={22} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <View style={[styles.statIcon, styles.greenIcon]}>
-              <Text style={[styles.statIconText, styles.greenIconText]}>V</Text>
+              <Truck size={24} color="#2E7D32" />
             </View>
             <Text style={styles.statValue}>{trips.length}</Text>
             <Text style={styles.statLabel}>Viagens</Text>
@@ -98,7 +213,7 @@ export default function DriverDashboardScreen({ navigation }) {
 
           <View style={styles.statCard}>
             <View style={[styles.statIcon, styles.blueIcon]}>
-              <Text style={[styles.statIconText, styles.blueIconText]}>A</Text>
+              <Clock size={24} color="#1976D2" />
             </View>
             <Text style={styles.statValue}>{inProgressTrips}</Text>
             <Text style={styles.statLabel}>Em Andamento</Text>
@@ -106,35 +221,57 @@ export default function DriverDashboardScreen({ navigation }) {
 
           <View style={styles.statCard}>
             <View style={[styles.statIcon, styles.grayIcon]}>
-              <Text style={[styles.statIconText, styles.grayIconText]}>C</Text>
+              <CircleCheck size={24} color="#464749" />
             </View>
             <Text style={styles.statValue}>{completedTrips}</Text>
-            <Text style={styles.statLabel}>Concluidas</Text>
+            <Text style={styles.statLabel}>Concluídas</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.content}>
-        <TouchableOpacity
-          style={styles.newTripButton}
-          onPress={() => navigation.navigate('NewTrip')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.newTripIcon}>
-            <Text style={styles.newTripIconText}>+</Text>
-          </View>
-          <Text style={styles.newTripText}>Nova Viagem</Text>
-        </TouchableOpacity>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={styles.newTripButton}
+            onPress={() => navigation.navigate('NewTrip')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.newTripIcon}>
+              <Text style={styles.newTripIconText}>+</Text>
+            </View>
+            <Text style={styles.newTripText}>Nova Viagem</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.historyButton}
-          onPress={() => navigation.navigate('TripHistory')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.historyButtonText}>Historico de viagens</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.historyButton}
+            onPress={() => navigation.navigate('TripHistory')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.historyButtonText}>Histórico de viagens</Text>
+          </TouchableOpacity>
+        </View>
 
-        <Text style={styles.sectionTitle}>Viagens</Text>
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'ACTIVE' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('ACTIVE')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, activeTab === 'ACTIVE' && styles.tabTextActive]}>
+              Viagens em Andamento
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'COMPLETED' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('COMPLETED')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, activeTab === 'COMPLETED' && styles.tabTextActive]}>
+              Últimas Viagens
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {isLoadingTrips ? (
           <View style={styles.emptyCard}>
@@ -144,19 +281,25 @@ export default function DriverDashboardScreen({ navigation }) {
           <View style={styles.emptyCard}>
             <Text style={styles.errorText}>{tripsError}</Text>
           </View>
-        ) : trips.length === 0 ? (
+        ) : displayedTrips.length === 0 ? (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
-              <Text style={styles.emptyIconText}>ET</Text>
+              {activeTab === 'ACTIVE' ? (
+                <stickyNoteOff  size={42} color="#9E9E9E" />
+              ) : (
+                <Text style={styles.emptyIconText}>C</Text>
+              )}
             </View>
-            <Text style={styles.emptyTitle}>Nenhuma viagem encontrada</Text>
+            <Text style={styles.emptyTitle}>{emptyMessage}</Text>
             <Text style={styles.emptyText}>
-              Nao ha dados de viagem disponiveis para exibir no momento.
+              {activeTab === 'ACTIVE'
+                ? 'Quando houver uma viagem ativa, ela aparecerá aqui.'
+                : 'Suas viagens concluídas aparecerão aqui.'}
             </Text>
           </View>
         ) : (
           <FlatList
-            data={trips}
+            data={displayedTrips}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderTrip}
             scrollEnabled={false}
@@ -213,16 +356,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   logoutButton: {
-    borderColor: '#bbf7d0',
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  logoutText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+    alignItems: 'center',
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
   },
   statsRow: {
     flexDirection: 'row',
@@ -254,19 +391,6 @@ const styles = StyleSheet.create({
   grayIcon: {
     backgroundColor: '#f3f4f6',
   },
-  statIconText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  greenIconText: {
-    color: '#16a34a',
-  },
-  blueIconText: {
-    color: '#2563eb',
-  },
-  grayIconText: {
-    color: '#4b5563',
-  },
   statValue: {
     color: '#1f2937',
     fontSize: 22,
@@ -283,54 +407,84 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 28,
   },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
   newTripButton: {
     alignItems: 'center',
     backgroundColor: '#ffffff',
     borderColor: '#16a34a',
     borderRadius: 8,
     borderWidth: 2,
+    flex: 1,
     justifyContent: 'center',
-    marginBottom: 16,
-    padding: 16,
+    minHeight: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
   },
   newTripIcon: {
     alignItems: 'center',
     backgroundColor: '#16a34a',
-    borderRadius: 24,
-    height: 48,
+    borderRadius: 16,
+    height: 32,
     justifyContent: 'center',
-    marginBottom: 8,
-    width: 48,
+    marginBottom: 6,
+    width: 32,
   },
   newTripIconText: {
     color: '#ffffff',
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: '600',
-    lineHeight: 30,
+    lineHeight: 22,
   },
   newTripText: {
     color: '#1f2937',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
+    textAlign: 'center',
   },
   historyButton: {
     alignItems: 'center',
     backgroundColor: '#16a34a',
     borderRadius: 8,
-    height: 48,
+    flex: 1,
+    minHeight: 72,
     justifyContent: 'center',
-    marginBottom: 24,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
   },
   historyButtonText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
+    textAlign: 'center',
   },
-  sectionTitle: {
-    color: '#1f2937',
-    fontSize: 18,
+  tabsContainer: {
+    borderBottomColor: '#e5e7eb',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  tabButton: {
+    alignItems: 'center',
+    flex: 1,
+    paddingBottom: 12,
+  },
+  tabButtonActive: {
+    borderBottomColor: '#16a34a',
+    borderBottomWidth: 2,
+  },
+  tabText: {
+    color: '#6b7280',
+    fontSize: 13,
     fontWeight: '600',
-    marginBottom: 12,
+    textAlign: 'center',
+  },
+  tabTextActive: {
+    color: '#16a34a',
+    fontWeight: '700',
   },
   emptyCard: {
     alignItems: 'center',
@@ -381,6 +535,86 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 16,
   },
+  inProgressTripCard: {
+    borderLeftColor: '#2563eb',
+    borderLeftWidth: 4,
+  },
+  tripHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  tripTitle: {
+    color: '#1f2937',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  tripDate: {
+    color: '#6b7280',
+    fontSize: 12,
+  },
+  tripMeta: {
+    alignItems: 'flex-end',
+  },
+  tripWeight: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 7,
+  },
+  tripStatusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  inProgressBadge: {
+    backgroundColor: '#dbeafe',
+  },
+  completedBadge: {
+    backgroundColor: '#dcfce7',
+  },
+  pendingBadge: {
+    backgroundColor: '#ffedd5',
+  },
+  tripStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  inProgressText: {
+    color: '#2563eb',
+  },
+  completedText: {
+    color: '#16a34a',
+  },
+  pendingText: {
+    color: '#f97316',
+  },
+  routeArea: {
+    gap: 12,
+    marginBottom: 14,
+  },
+  routeRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+  },
+  routeDot: {
+    borderRadius: 6,
+    height: 12,
+    marginRight: 10,
+    marginTop: 4,
+    width: 12,
+  },
+  originDot: {
+    backgroundColor: '#16a34a',
+  },
+  destinationDot: {
+    backgroundColor: '#dc2626',
+  },
+  routeTextArea: {
+    flex: 1,
+  },
   tripLabel: {
     color: '#6b7280',
     fontSize: 12,
@@ -388,12 +622,29 @@ const styles = StyleSheet.create({
   },
   tripValue: {
     color: '#111827',
-    fontSize: 15,
-    marginBottom: 10,
-  },
-  tripStatus: {
-    color: '#16a34a',
     fontSize: 14,
-    fontWeight: '600',
+    lineHeight: 20,
+  },
+  tripFooter: {
+    borderTopColor: '#f3f4f6',
+    borderTopWidth: 1,
+    paddingTop: 12,
+  },
+  materialText: {
+    color: '#6b7280',
+    fontSize: 12,
+  },
+  confirmButton: {
+    alignItems: 'center',
+    backgroundColor: '#16a34a',
+    borderRadius: 8,
+    height: 42,
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  confirmButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

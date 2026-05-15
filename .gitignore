@@ -103,3 +103,7 @@ temp/
 
 # Local tooling
 .maven-home/
+
+# Banco local e uploads
+data/
+uploads/

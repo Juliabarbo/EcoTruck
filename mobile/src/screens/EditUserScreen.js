@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ArrowLeft, Save, Trash2 } from 'lucide-react-native';
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import api from '../services/api';
@@ -48,7 +49,7 @@ export default function EditUserScreen({ navigation, route }) {
             onPress={() => navigation.navigate('UserManagement')}
             activeOpacity={0.8}
           >
-            <Text style={styles.backButtonText}>{'<'}</Text>
+            <ArrowLeft size={24} color="#FFFFFF" />
           </TouchableOpacity>
 
           <View style={styles.headerTextArea}>
@@ -113,7 +114,10 @@ export default function EditUserScreen({ navigation, route }) {
           {isLoading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={styles.buttonText}>Salvar alterações</Text>
+            <View style={styles.buttonContent}>
+              <Save size={18} color="#FFFFFF" />
+              <Text style={styles.buttonText}>Salvar alterações</Text>
+            </View>
           )}
         </TouchableOpacity>
 
@@ -136,7 +140,10 @@ export default function EditUserScreen({ navigation, route }) {
             {isDeleting ? (
               <ActivityIndicator color="#dc2626" />
             ) : (
-              <Text style={styles.deleteButtonText}>X Excluir Motorista</Text>
+              <View style={styles.buttonContent}>
+                <Trash2 size={18} color="#E53935" />
+                <Text style={styles.deleteButtonText}>Excluir Motorista</Text>
+              </View>
             )}
           </TouchableOpacity>
         </View>
@@ -162,18 +169,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: 'center',
-    borderColor: '#6b7280',
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 40,
+    height: 36,
     justifyContent: 'center',
     marginRight: 12,
-    width: 40,
-  },
-  backButtonText: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '700',
+    width: 36,
   },
   headerTextArea: {
     flex: 1,
@@ -259,6 +258,12 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7,
+  },
+  buttonContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
   },
   buttonText: {
     color: '#ffffff',

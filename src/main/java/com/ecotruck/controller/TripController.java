@@ -16,7 +16,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/trips")
@@ -59,6 +61,17 @@ public class TripController {
                 request.longitude()
         );
         return ResponseEntity.ok(tripService.confirmDisposal(confirmedRequest, user));
+    }
+
+    @PostMapping("/{id}/confirm-disposal")
+    public ResponseEntity<TripResponse> confirmDisposalWithPhoto(
+            @PathVariable Long id,
+            @RequestParam("qrCodeValidation") String qrCodeValidation,
+            @RequestParam(value = "photo", required = false) MultipartFile photo,
+            @RequestParam(value = "photoName", required = false) String photoName,
+            @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.ok(tripService.confirmDisposalWithPhoto(id, qrCodeValidation, photo, photoName, user));
     }
 
     @GetMapping({"", "/"})

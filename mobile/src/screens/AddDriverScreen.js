@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ArrowLeft } from 'lucide-react-native';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import api from '../services/api';
@@ -41,12 +42,12 @@ export default function AddDriverScreen({ navigation }) {
             onPress={() => navigation.navigate('UserManagement')}
             activeOpacity={0.8}
           >
-            <Text style={styles.backButtonText}>{'<'}</Text>
+            <ArrowLeft size={24} color="#FFFFFF" />
           </TouchableOpacity>
 
           <View style={styles.headerTextArea}>
             <Text style={styles.title}>Adicionar Motorista</Text>
-            <Text style={styles.subtitle}>Cadastrar novo usuario motorista</Text>
+            <Text style={styles.subtitle}>Cadastrar novo usuário motorista</Text>
           </View>
         </View>
       </View>
@@ -133,18 +134,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: 'center',
-    borderColor: '#6b7280',
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 40,
+    height: 36,
     justifyContent: 'center',
     marginRight: 12,
-    width: 40,
-  },
-  backButtonText: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '700',
+    width: 36,
   },
   headerTextArea: {
     flex: 1,

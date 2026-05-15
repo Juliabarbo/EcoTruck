@@ -33,12 +33,12 @@ export default function LoginScreen({ navigation }) {
       const userRole = response.data?.role;
 
       if (!token) {
-        setErrorMessage('Token nao recebido pelo servidor.');
+        setErrorMessage('Token não recebido pelo servidor.');
         return;
       }
 
       if (userRole !== 'DRIVER' && userRole !== 'ADMIN') {
-        setErrorMessage('Perfil de usuario nao permitido.');
+        setErrorMessage('Perfil de usuário não permitido.');
         return;
       }
 
@@ -51,7 +51,7 @@ export default function LoginScreen({ navigation }) {
 
       navigation.replace(userRole === 'ADMIN' ? 'AdminDashboard' : 'Dashboard');
     } catch (error) {
-      const message = error.response?.data?.message || 'E-mail ou senha invalidos.';
+      const message = error.response?.data?.message || 'E-mail ou senha inválidos.';
       setErrorMessage(message);
     } finally {
       setIsLoading(false);
@@ -65,7 +65,7 @@ export default function LoginScreen({ navigation }) {
           <Text style={styles.logoText}>ET</Text>
         </View>
         <Text style={styles.title}>EcoTruck</Text>
-        <Text style={styles.subtitle}>Gestao Inteligente de Residuos</Text>
+        <Text style={styles.subtitle}>Gestão Inteligente de Resíduos</Text>
       </View>
 
       <View style={styles.content}>

@@ -1,33 +1,54 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ArrowLeft, UserPlus } from 'lucide-react-native';
+import { ActivityIndicator, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import api from '../services/api';
 
 export default function UserManagementScreen({ navigation }) {
   const [users, setUsers] = useState([]);
+  const [trips, setTrips] = useState([]);
+  const [searchText, setSearchText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [togglingUserId, setTogglingUserId] = useState(null);
 
+  const normalizedSearch = searchText.trim().toLowerCase();
+  const filteredUsers = normalizedSearch
+    ? users.filter((user) => {
+        const name = user.name?.toLowerCase() || '';
+        const email = user.email?.toLowerCase() || '';
+        const id = String(user.id || '').toLowerCase();
+
+        return name.includes(normalizedSearch)
+          || email.includes(normalizedSearch)
+          || id.includes(normalizedSearch);
+      })
+    : users;
+
   useFocusEffect(
     useCallback(() => {
-    async function loadUsers() {
-      setErrorMessage('');
-      setIsLoading(true);
+      async function loadUsers() {
+        setErrorMessage('');
+        setIsLoading(true);
 
-      try {
-        const response = await api.get('/users/');
-        setUsers(Array.isArray(response.data) ? response.data : []);
-      } catch (error) {
-        setErrorMessage('Nao foi possivel carregar os usuarios.');
-      } finally {
-        setIsLoading(false);
+        try {
+          const [usersResponse, tripsResponse] = await Promise.all([
+            api.get('/users/'),
+            api.get('/trips'),
+          ]);
+
+          setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
+          setTrips(Array.isArray(tripsResponse.data) ? tripsResponse.data : []);
+        } catch (error) {
+          setErrorMessage('Não foi possível carregar os usuários.');
+        } finally {
+          setIsLoading(false);
+        }
       }
-    }
 
-    loadUsers();
+      loadUsers();
     }, [])
   );
 
@@ -42,6 +63,55 @@ export default function UserManagementScreen({ navigation }) {
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  }
+
+  function formatDate(value) {
+    if (!value) {
+      return '';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+
+  function getUserTrips(user) {
+    const userName = user.name?.trim().toLowerCase();
+
+    if (!userName) {
+      return [];
+    }
+
+    return trips.filter((trip) => trip.driverName?.trim().toLowerCase() === userName);
+  }
+
+  function getUserStats(user) {
+    const userTrips = getUserTrips(user);
+    const totalWeight = userTrips.reduce((total, trip) => {
+      const weight = Number(trip.estimatedWeight);
+      return Number.isNaN(weight) ? total : total + weight;
+    }, 0);
+
+    return {
+      tripsCount: userTrips.length,
+      totalWeight,
+    };
+  }
+
+  function formatWeight(value) {
+    if (!value) {
+      return '0 ton';
+    }
+
+    return `${Number(value.toFixed(2))} ton`;
   }
 
   async function handleToggleUser(user) {
@@ -69,6 +139,9 @@ export default function UserManagementScreen({ navigation }) {
   }
 
   function renderUser({ item }) {
+    const stats = getUserStats(item);
+    const createdAt = formatDate(item.createdAt);
+
     return (
       <View style={styles.userCard}>
         <View style={styles.avatar}>
@@ -79,6 +152,7 @@ export default function UserManagementScreen({ navigation }) {
           <View style={styles.userHeader}>
             <View style={styles.userTitleArea}>
               <Text style={styles.userName}>{item.name}</Text>
+              <Text style={styles.userId}>ID {item.id}</Text>
               <Text style={styles.userEmail}>{item.email}</Text>
             </View>
 
@@ -102,7 +176,40 @@ export default function UserManagementScreen({ navigation }) {
           <View style={styles.roleBadge}>
             <Text style={styles.roleText}>{item.role}</Text>
           </View>
+
+          <View style={styles.statsArea}>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Viagens</Text>
+              <Text style={styles.statValue}>{stats.tripsCount}</Text>
+            </View>
+
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Total transportado</Text>
+              <Text style={styles.statValue}>{formatWeight(stats.totalWeight)}</Text>
+            </View>
+
+            {createdAt ? (
+              <View style={styles.createdArea}>
+                <Text style={styles.createdLabel}>Cadastro</Text>
+                <Text style={styles.createdValue}>{createdAt}</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
+      </View>
+    );
+  }
+
+  function renderSearch() {
+    return (
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          value={searchText}
+          onChangeText={setSearchText}
+          placeholder="Buscar motorista por nome, ID ou e-mail..."
+          placeholderTextColor="#64748b"
+        />
       </View>
     );
   }
@@ -116,12 +223,12 @@ export default function UserManagementScreen({ navigation }) {
             onPress={() => navigation.navigate('AdminDashboard')}
             activeOpacity={0.8}
           >
-            <Text style={styles.backButtonText}>←</Text>
+            <ArrowLeft size={24} color="#FFFFFF" />
           </TouchableOpacity>
 
           <View style={styles.headerTextArea}>
-            <Text style={styles.title}>Gerenciar Usuarios</Text>
-            <Text style={styles.subtitle}>Usuarios cadastrados</Text>
+            <Text style={styles.title}>Gerenciar Usuários</Text>
+            <Text style={styles.subtitle}>Usuários cadastrados</Text>
           </View>
 
           <TouchableOpacity
@@ -129,7 +236,7 @@ export default function UserManagementScreen({ navigation }) {
             onPress={() => navigation.navigate('AddDriver')}
             activeOpacity={0.8}
           >
-            <Text style={styles.addIconButtonText}>U+</Text>
+            <UserPlus size={22} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -144,7 +251,7 @@ export default function UserManagementScreen({ navigation }) {
           onPress={() => navigation.navigate('AddDriver')}
           activeOpacity={0.8}
         >
-          <Text style={styles.addDriverIcon}>+</Text>
+          <UserPlus size={20} color="#FFFFFF" />
           <Text style={styles.addDriverText}>Adicionar Novo Motorista</Text>
         </TouchableOpacity>
       </View>
@@ -178,14 +285,15 @@ export default function UserManagementScreen({ navigation }) {
       {renderHeader()}
 
       <FlatList
-        data={users}
+        data={filteredUsers}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderUser}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={renderSearch}
         ListFooterComponent={renderFooter}
         ListEmptyComponent={
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Nenhum usuario encontrado</Text>
+            <Text style={styles.emptyTitle}>Nenhum motorista encontrado</Text>
           </View>
         }
       />
@@ -256,37 +364,20 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: 'center',
-    borderColor: '#6b7280',
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 40,
+    height: 36,
     justifyContent: 'center',
     marginRight: 12,
-    width: 40,
-  },
-  backButtonText: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '700',
+    width: 36,
   },
   headerTextArea: {
     flex: 1,
   },
   addIconButton: {
     alignItems: 'center',
-    borderColor: '#6b7280',
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 40,
+    height: 36,
     justifyContent: 'center',
     marginLeft: 12,
-    width: 40,
-  },
-  addIconButtonText: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '700',
-    lineHeight: 26,
+    width: 36,
   },
   title: {
     color: '#ffffff',
@@ -302,6 +393,22 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 32,
   },
+  searchContainer: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 16,
+    paddingHorizontal: 12,
+  },
+  searchInput: {
+    color: '#0f172a',
+    flex: 1,
+    fontSize: 14,
+    height: 44,
+  },
   footer: {
     paddingTop: 4,
   },
@@ -310,16 +417,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#16a34a',
     borderRadius: 8,
     flexDirection: 'row',
+    gap: 8,
     height: 48,
     justifyContent: 'center',
     paddingHorizontal: 16,
-  },
-  addDriverIcon: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 24,
-    marginRight: 8,
   },
   addDriverText: {
     color: '#ffffff',
@@ -331,9 +432,10 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
     borderRadius: 8,
     borderWidth: 1,
+    elevation: 2,
     flexDirection: 'row',
     marginBottom: 12,
-    padding: 16,
+    padding: 18,
   },
   avatar: {
     alignItems: 'center',
@@ -355,7 +457,7 @@ const styles = StyleSheet.create({
   userHeader: {
     alignItems: 'flex-start',
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   userTitleArea: {
     flex: 1,
@@ -372,8 +474,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 3,
   },
+  userId: {
+    color: '#64748b',
+    fontSize: 12,
+    marginBottom: 7,
+  },
   userEmail: {
-    color: '#6b7280',
+    color: '#334155',
     fontSize: 13,
   },
   statusBadge: {
@@ -419,6 +526,41 @@ const styles = StyleSheet.create({
   roleText: {
     color: '#374151',
     fontSize: 12,
+    fontWeight: '700',
+  },
+  statsArea: {
+    alignItems: 'flex-end',
+    borderTopColor: '#f1f5f9',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    marginTop: 16,
+    paddingTop: 14,
+  },
+  statItem: {
+    marginRight: 18,
+  },
+  statLabel: {
+    color: '#64748b',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  statValue: {
+    color: '#0f172a',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  createdArea: {
+    alignItems: 'flex-end',
+    flex: 1,
+  },
+  createdLabel: {
+    color: '#64748b',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  createdValue: {
+    color: '#0f172a',
+    fontSize: 13,
     fontWeight: '700',
   },
   center: {
